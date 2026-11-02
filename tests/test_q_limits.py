@@ -121,81 +121,41 @@ class TestReactivePowerLimits(unittest.TestCase):
             )
 
     def test_pq_bus_switches_back_to_pv(self):
+        """Q limits are tested at converged points, then buses are re-switched and re-converged.
+        This 5-bus case (found by random search) needs PV->PQ at buses 3 and 4 and then
+        PQ->PV back-switching of bus 3 once the voltage profile has changed."""
         net = Network(
             buses=[
-                Bus(1, "SLACK", vm=1.0),
-                Bus(
-                    2, "PV",
-                    vm=1.02,
-                    p_gen=0.0,
-                    q_min=-0.10,
-                    q_max=0.30,
-                ),
+                Bus(1, "SLACK", vm=1.02),
+                Bus(2, "PV", vm=1.004, p_gen=0.07, q_min=-0.24, q_max=0.17),
+                Bus(3, "PV", vm=1.005, p_gen=0.13, q_min=-0.14, q_max=0.05),
+                Bus(4, "PV", vm=1.037, p_gen=0.03, q_min=-0.12, q_max=0.16),
+                Bus(5, "PQ", p_load=0.34, q_load=0.23),
             ],
             branches=[
-                Branch(1, 2, r=0.01, x=0.20),
+                Branch(1, 2, 0.01, 0.1), Branch(2, 3, 0.02, 0.1), Branch(3, 4, 0.02, 0.15),
+                Branch(4, 5, 0.02, 0.2), Branch(1, 5, 0.03, 0.2), Branch(2, 5, 0.02, 0.12),
             ],
         )
-
-        original_q_gen = net.buses[1].q_gen
-
-        result = solve_power_flow(
-            net,
-            tolerance=1e-8,
-            max_iterations=30,
-            enforce_q_limits=True,
-            initial_va_deg=[0.0, 60.0],
-        )
-
+        original_q = [b.q_gen for b in net.buses]
+        result = solve_power_flow(net, tolerance=1e-8, max_iterations=30, enforce_q_limits=True)
         self.assertTrue(result["converged"])
         self.assertLessEqual(result["max_mismatch_pu"], 1e-8)
-
-        switches = [
-            s for s in result["q_limit_switches"]
-            if s["bus"] == 2
-        ]
-
-        transitions = [
-            (s["from"], s["to"])
-            for s in switches
-        ]
-
-        self.assertIn(("PV", "PQ"), transitions)
-        self.assertIn(("PQ", "PV"), transitions)
-
-        pv_to_pq = next(
-            s for s in switches
-            if s["from"] == "PV" and s["to"] == "PQ"
-        )
-
-        pq_to_pv = next(
-            s for s in switches
-            if s["from"] == "PQ" and s["to"] == "PV"
-        )
-
-        self.assertGreater(
-            pq_to_pv["iteration"],
-            pv_to_pq["iteration"],
-        )
-
-        bus2 = next(
-            b for b in result["bus_results"]
-            if b["bus"] == 2
-        )
-
-        self.assertEqual(bus2["type"], "PV")
-        self.assertFalse(bus2["q_limit_hit"])
-        self.assertAlmostEqual(bus2["vm_pu"], 1.02, places=6)
-
-        self.assertGreaterEqual(
-            bus2["q_injection_pu"], -0.10 - 1e-8
-        )
-        self.assertLessEqual(
-            bus2["q_injection_pu"], 0.30 + 1e-8
-        )
-
-        # Solving must not permanently modify the input generator setting.
-        self.assertEqual(net.buses[1].q_gen, original_q_gen)
+        sw = [(s["bus"], s["from"], s["to"], s["limit"]) for s in result["q_limit_switches"]]
+        self.assertIn((3, "PV", "PQ", "Qmin"), sw)
+        self.assertIn((4, "PV", "PQ", "Qmax"), sw)
+        self.assertIn((3, "PQ", "PV", "Qmin"), sw)
+        self.assertLess(sw.index((3, "PV", "PQ", "Qmin")), sw.index((3, "PQ", "PV", "Qmin")))
+        by = {b["bus"]: b for b in result["bus_results"]}
+        # final state: bus 3 is a regulating PV bus again, bus 4 is held at its Qmax
+        self.assertEqual(by[3]["type"], "PV")
+        self.assertAlmostEqual(by[3]["vm_pu"], 1.005, places=9)
+        self.assertTrue(-0.14 - 1e-6 <= by[3]["q_injection_pu"] <= 0.05 + 1e-6)
+        self.assertTrue(by[4]["q_limit_hit"])
+        self.assertAlmostEqual(by[4]["q_injection_pu"], 0.16, places=6)
+        self.assertLessEqual(by[4]["vm_pu"], 1.037)          # held at Qmax => voltage below set-point
+        # the solve must not modify the input model
+        self.assertEqual([b.q_gen for b in net.buses], original_q)
 
 
 if __name__ == "__main__":
