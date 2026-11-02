@@ -1,0 +1,5 @@
+"""Edit these before the demo - they appear in Help > About (assignment B4)."""
+VERSION = "1.0"
+STUDENT_NAME = "Yamini Pilli"
+SR_NUMBER = "27745"
+COURSE = "E4 234 Advanced Power System Analysis"

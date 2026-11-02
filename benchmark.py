@@ -25,6 +25,7 @@ def benchmark_case(case_number):
         )
 
     times = []
+    newton_times = []
     iteration_counts = []
     final_result = None
 
@@ -39,6 +40,7 @@ def benchmark_case(case_number):
             tolerance=TOLERANCE,
             max_iterations=MAX_ITERATIONS,
             enforce_q_limits=False,
+            flat_start=True,
         )
         elapsed = perf_counter() - start
 
@@ -50,6 +52,7 @@ def benchmark_case(case_number):
             )
 
         times.append(elapsed)
+        newton_times.append(result["newton_time_s"])
         iteration_counts.append(result["iterations"])
         final_result = result
 
@@ -57,8 +60,10 @@ def benchmark_case(case_number):
     median_time = statistics.median(times)
     median_iterations = statistics.median(iteration_counts)
 
+    median_newton = statistics.median(newton_times)
+    # time per iteration = Newton-loop time / iterations (excludes Ybus build and post-processing)
     time_per_iteration = (
-        median_time / median_iterations
+        median_newton / median_iterations
         if median_iterations > 0
         else float("nan")
     )
@@ -68,6 +73,7 @@ def benchmark_case(case_number):
         "buses": len(final_result["bus_results"]),
         "iterations": median_iterations,
         "time_ms": median_time * 1000,
+        "newton_ms": median_newton * 1000,
         "per_iteration_ms": time_per_iteration * 1000,
         "mismatch": final_result["max_mismatch_pu"],
         "loss_mw": final_result["total_p_loss_mw"],
@@ -78,13 +84,13 @@ def main():
     print("Newton-Raphson Power Flow Benchmark")
     print(f"Tolerance: {TOLERANCE}")
     print(f"Maximum iterations: {MAX_ITERATIONS}")
-    print(f"Reactive power limits: disabled")
+    print("Start: flat; reactive power limits: disabled")
     print(f"Timed runs per case: {REPEATS}")
-    print("-" * 100)
+    print("-" * 112)
 
     print(
         f"{'Case':<10}{'Buses':>8}{'Iterations':>13}"
-        f"{'Total (ms)':>15}{'Per iter (ms)':>17}"
+        f"{'Total (ms)':>15}{'NR loop (ms)':>14}{'Per iter (ms)':>16}"
         f"{'Mismatch (pu)':>19}{'Loss (MW)':>13}"
     )
 
@@ -96,7 +102,8 @@ def main():
             f"{row['buses']:>8}"
             f"{row['iterations']:>13}"
             f"{row['time_ms']:>15.4f}"
-            f"{row['per_iteration_ms']:>17.4f}"
+            f"{row['newton_ms']:>14.4f}"
+            f"{row['per_iteration_ms']:>16.4f}"
             f"{row['mismatch']:>19.3e}"
             f"{row['loss_mw']:>13.4f}"
         )
