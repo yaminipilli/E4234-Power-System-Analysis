@@ -167,6 +167,8 @@ def load_matpower_case(filename):
                 v_max=float(vmax),
                 in_service=(bus_type != 4),
                 name=f"Bus {number}",
+                base_kv=float(base_kv),
+                area=int(row[6]),
             )
         )
 
@@ -194,7 +196,8 @@ def load_matpower_case(filename):
                 tap=float(tap),
                 shift_deg=float(shift),
                 rate_mva=float(rate_a),
-                in_service=(status > 0),
+                in_service=bool(status > 0),
+                kind="transformer" if (tap != 1.0 or shift != 0.0) else "line",
             )
         )
 
