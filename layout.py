@@ -10,6 +10,22 @@ def snap(v, grid=GRID):
     return round(v / grid) * grid
 
 
+def circular_layout(net, spacing=95.0):
+    """Buses on a circle (the default for imported cases).  The radius grows with the bus count."""
+    n = len(net.buses)
+    if n == 0:
+        return {}
+    if n == 1:
+        return {net.buses[0].number: (260.0, 180.0)}
+    radius = max(220.0, n * spacing / (2 * math.pi))
+    cx = cy = radius + 120.0
+    out = {}
+    for i, b in enumerate(net.buses):
+        a = -math.pi / 2 + 2 * math.pi * i / n
+        out[b.number] = (snap(cx + radius * math.cos(a)), snap(cy + radius * math.sin(a)))
+    return out
+
+
 def force_directed_layout(net, spacing=170.0, iterations=300, seed=1):
     """Return {bus_number: (x, y)} in world coordinates, snapped to the grid."""
     nums = [b.number for b in net.buses]

@@ -250,5 +250,79 @@ class TestCopyFindFiles(unittest.TestCase):
         self.assertEqual(len(set(m.positions.values())), 118)
 
 
+class TestLayoutAndLegacyProjects(unittest.TestCase):
+    def test_imported_case_starts_on_a_circle(self):
+        for case in (14, 118):
+            m = ProjectModel.import_case(ROOT / "data" / f"case{case}.m")
+            pts = np.array([m.positions[b.number] for b in m.net.buses])
+            centre = (pts.min(axis=0) + pts.max(axis=0)) / 2
+            radii = np.linalg.norm(pts - centre, axis=1)
+            self.assertLess(radii.std() / radii.mean(), 0.03)          # all buses on one circle (grid snapping only)
+            self.assertEqual(len({tuple(p) for p in pts}), len(pts))
+
+    def test_auto_layout_modes_and_undo(self):
+        m = ProjectModel.import_case(ROOT / "data" / "case30.m")
+        circle = dict(m.positions)
+        m.auto_layout("force")
+        self.assertNotEqual(m.positions, circle)
+        m.auto_layout("circle")
+        self.assertEqual(m.positions, circle)
+        m.undo(); m.undo()
+        self.assertEqual(m.positions, circle)
+
+    def test_open_project_written_by_first_gui_version(self):
+        """Old files: study block with a string tolerance and 'flat_start'; generation kept on the Bus fields."""
+        import json
+        old = {"format": "E4234-LoadFlow-Project", "version": 1,
+               "network": {"base_mva": 100.0, "frequency_hz": 50.0, "metadata": {"base_kv_by_bus": {"1": 11.0}},
+                           "buses": [
+                               {"number": 1, "kind": "SLACK", "vm": 1.02, "va_deg": 0.0},
+                               {"number": 2, "kind": "PV", "vm": 1.01, "p_gen": 0.4, "q_min": -1.0, "q_max": 1.0},
+                               {"number": 3, "kind": "PQ", "p_load": 0.5, "q_load": 0.2},
+                               {"number": 4, "kind": "PQ", "p_gen": 0.1, "q_gen": 0.02}],
+                           "branches": [{"from_bus": 1, "to_bus": 2, "r": 0.01, "x": 0.1},
+                                        {"from_bus": 2, "to_bus": 3, "r": 0.02, "x": 0.2},
+                                        {"from_bus": 3, "to_bus": 4, "r": 0.02, "x": 0.2}],
+                           "generators": []},
+               "layout": {"1": [100, 100], "2": [300, 100]},          # buses 3, 4 have no stored position
+               "study": {"tolerance": "1e-8", "max_iterations": 30, "flat_start": False,
+                         "enforce_q_limits": True, "load_scale": 1.0}}
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "old.json"
+            p.write_text(json.dumps(old))
+            m = ProjectModel.open(p)
+        self.assertEqual(m.study.tolerance, 1e-8)
+        self.assertEqual((m.study.start, m.study.enforce_q_limits), ("data", True))
+        self.assertEqual(len(m.net.generators), 1)                       # PV bus 2 became a generator record
+        self.assertEqual(m.net.buses[1].kind, "PV")
+        self.assertAlmostEqual(m.net.buses[3].p_load, -0.1)              # PQ injection became a negative load
+        self.assertEqual(set(m.positions), {1, 2, 3, 4})
+        self.assertEqual(m.net.metadata["base_kv_by_bus"], {1: 11.0})
+        res = m.run()
+        self.assertTrue(res["converged"])
+        self.assertAlmostEqual(next(b for b in res["bus_results"] if b["bus"] == 2)["p_gen_mw"], 40.0, places=6)
+
+    def test_open_rejects_foreign_json_with_clear_message(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "x.json"
+            p.write_text("{\"hello\": 1}")
+            with self.assertRaises(ValueError) as cm:
+                ProjectModel.open(p)
+        self.assertIn("not a load-flow project", str(cm.exception))
+
+    def test_save_open_roundtrip_keeps_everything(self):
+        m = ProjectModel.import_case(ROOT / "data" / "case14.m")
+        m.study.load_scale = 1.2
+        m.net.branches[3].in_service = False
+        with tempfile.TemporaryDirectory() as d:
+            m.save(Path(d) / "p.json")
+            self.assertFalse(m.dirty)
+            m2 = ProjectModel.open(Path(d) / "p.json")
+        self.assertEqual(m2.positions, m.positions)
+        self.assertEqual(m2.study.load_scale, 1.2)
+        self.assertFalse(m2.net.branches[3].in_service)
+        self.assertEqual(len(m2.net.generators), len(m.net.generators))
+
+
 if __name__ == "__main__":
     unittest.main()

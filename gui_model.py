@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import gui_fields
-from layout import force_directed_layout, snap
+from layout import circular_layout, force_directed_layout, snap
 from matpower_import import load_matpower_case
 from network import Branch, Bus, Generator, Network, derive_bus_kinds
 from solver import solve_power_flow
@@ -32,6 +32,31 @@ class Study:
     show_kv: bool = False
     snap_to_grid: bool = True
 
+    @classmethod
+    def from_dict(cls, d):
+        """Tolerant reader: also understands the study block written by the first version of the GUI
+        (string tolerance, 'flat_start' flag)."""
+        s = cls()
+
+        def num(key, conv, default):
+            try:
+                return conv(d[key])
+            except (KeyError, TypeError, ValueError):
+                return default
+
+        s.tolerance = num("tolerance", float, s.tolerance)
+        s.max_iterations = num("max_iterations", lambda v: int(float(v)), s.max_iterations)
+        s.load_scale = num("load_scale", float, s.load_scale)
+        s.enforce_q_limits = bool(d.get("enforce_q_limits", s.enforce_q_limits))
+        if d.get("start") in ("flat", "previous", "data"):
+            s.start = d["start"]
+        elif "flat_start" in d:
+            s.start = "flat" if d["flat_start"] else "data"
+        for k in ("show_boxes", "show_colours", "show_grid", "show_kv", "snap_to_grid"):
+            if k in d:
+                setattr(s, k, bool(d[k]))
+        return s
+
 
 def _jsonable(o):
     """json fallback: NumPy scalars -> Python numbers."""
@@ -47,19 +72,38 @@ def network_to_dict(net):
             "generators": [asdict(x) for x in net.generators]}
 
 
+def migrate_legacy_generation(net):
+    """Projects saved by the first GUI kept generation on the Bus fields (no Generator records).
+    Convert them: PV buses get a Generator record; PQ buses with a scheduled injection become a net load."""
+    if net.generators:
+        return
+    for b in net.buses:
+        if b.kind.upper() == "SLACK":
+            continue
+        if b.kind.upper() == "PV":
+            net.generators.append(Generator(b.number, p_gen=b.p_gen, q_gen=b.q_gen, q_max=b.q_max, q_min=b.q_min,
+                                            v_setpoint=b.vm, name=f"Generator at bus {b.number}"))
+            b.p_gen = b.q_gen = 0.0
+        elif (b.p_gen or b.q_gen) and b.load_model.upper() == "PQ":
+            b.p_load -= b.p_gen
+            b.q_load -= b.q_gen
+            b.p_gen = b.q_gen = 0.0
+
+
 def network_from_dict(d):
+    meta = dict(d.get("metadata", {}))
+    if isinstance(meta.get("base_kv_by_bus"), dict):          # JSON turns int keys into strings
+        meta["base_kv_by_bus"] = {int(k): v for k, v in meta["base_kv_by_bus"].items()}
     return Network(buses=[Bus(**x) for x in d["buses"]], branches=[Branch(**x) for x in d.get("branches", [])],
                    generators=[Generator(**x) for x in d.get("generators", [])],
                    base_mva=float(d.get("base_mva", 100)), frequency_hz=float(d.get("frequency_hz", 50)),
-                   metadata=d.get("metadata", {}))
+                   metadata=meta)
 
 
 class ProjectModel:
     def __init__(self, net=None, positions=None):
         self.net = net or Network(buses=[Bus(1, "SLACK", name="Bus 1", base_kv=11.0)], branches=[])
-        self.positions = positions if positions is not None else \
-            ({b.number: (260.0, 180.0) for b in self.net.buses} if len(self.net.buses) == 1
-             else force_directed_layout(self.net))
+        self.positions = positions if positions is not None else circular_layout(self.net)
         self.study = Study()
         self.results = None
         self.stale = False
@@ -204,9 +248,10 @@ class ProjectModel:
         self.net.base_mva, self.net.frequency_hz = base_mva, freq
         self.push_undo(before)
 
-    def auto_layout(self):
+    def auto_layout(self, mode="circle"):
+        """mode: 'circle' (default) or 'force' (force-directed)."""
         before = self.snapshot()
-        self.positions = force_directed_layout(self.net)
+        self.positions = force_directed_layout(self.net) if mode == "force" else circular_layout(self.net)
         self.push_undo(before)
 
     def find(self, text):
@@ -313,14 +358,17 @@ class ProjectModel:
     @classmethod
     def open(cls, path):
         d = json.loads(Path(path).read_text(encoding="utf-8"))
+        if "network" not in d:
+            raise ValueError("this file is not a load-flow project (no 'network' section)")
         net = network_from_dict(d["network"])
-        pos = {int(k): tuple(v) for k, v in d.get("layout", {}).items()}
+        migrate_legacy_generation(net)
+        derive_bus_kinds(net)
+        pos = {int(k): tuple(v) for k, v in d.get("layout", {}).items() if int(k) in net.index}
         m = cls(net, pos)
         missing = [b.number for b in net.buses if b.number not in pos]
         if missing:
-            m.positions.update({k: v for k, v in force_directed_layout(net).items() if k in missing})
-        st = d.get("study", {})
-        m.study = Study(**{k: v for k, v in st.items() if k in Study.__dataclass_fields__})
+            m.positions.update({k: v for k, v in circular_layout(net).items() if k in missing})
+        m.study = Study.from_dict(d.get("study", {}))
         m.path = Path(path)
         return m
 
@@ -332,6 +380,6 @@ class ProjectModel:
             net = load_cdf_case(path)
         else:
             net = load_matpower_case(path)
-        m = cls(net, force_directed_layout(net))
+        m = cls(net, circular_layout(net))          # imported cases start on a circle (Network > Auto-layout to change)
         m.dirty = True
         return m

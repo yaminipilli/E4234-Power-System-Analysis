@@ -268,6 +268,10 @@ def main():
         assert len(app.model.net.buses) == 14 and app.model.positions
         app.run_nr(); assert app.model.results["converged"]
     app.file_new(); assert len(app.model.net.buses) == 1
+    app.run_nr(); popups.clear(); app.show_results(); assert not popups                     # results exist -> no "run first" box
+    app.model.results = None; app.show_results(); assert popups and "no results" in popups[-1][2].lower()
+    app.auto_layout("force"); app.auto_layout("circle")
+    app.sel = {("bus", 3)}; app.show_properties(); app.focus_properties()
     app.user_guide(); app.about(); app.show_loss_summary(); app.check_network(); app.reset_layout()
     app.auto_layout()
     print("errors popped up during smoke run:", [p for p in popups if p[0] == "showerror"])

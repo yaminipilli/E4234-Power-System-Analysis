@@ -40,7 +40,7 @@ USER_GUIDE = (
     "Orange bar: largest mismatch after a divergence.\n\n"
     "MOUSE / KEYS\n"
     "Wheel: zoom.  Middle-drag or Pan tool: pan.  Ctrl+click: multi-select; drag on empty space: box select.\n"
-    "Right-click: properties, delete, take out of service.  Del: delete.  F: fit to window.  Esc: cancel tool.\n"
+    "Right-click: properties (docked panel on the right), delete, take out of service.  Del: delete.  F: fit to window.  Esc: cancel tool.\n"
     "Ctrl+Z / Ctrl+Y undo / redo.  Ctrl+C / Ctrl+V copy / paste buses.  Ctrl+F find.  Ctrl+K check network."
 )
 
@@ -176,8 +176,8 @@ class LoadFlowApp(tk.Tk):
         bar = tk.Menu(self)
         self.config(menu=bar)
         m = tk.Menu(bar, tearoff=False)
-        for label, cmd in [("New\tCtrl+N", self.file_new), ("Open project...\tCtrl+O", self.file_open),
-                           ("Save\tCtrl+S", self.file_save), ("Save as...", self.file_save_as), (None, None),
+        for label, cmd in [("New\t(Ctrl+N)", self.file_new), ("Open project...\tCtrl+O", self.file_open),
+                           ("Save\t(Ctrl+S)", self.file_save), ("Save as...", self.file_save_as), (None, None),
                            ("Open example: IEEE 14-bus", self.open_example),
                            ("Import IEEE CDF / MATPOWER...", self.file_import),
                            ("Export case as MATPOWER...", self.export_matpower),
@@ -190,16 +190,16 @@ class LoadFlowApp(tk.Tk):
         m.add_command(label="Exit", command=self.on_close)
         bar.add_cascade(label="File", menu=m)
         m = tk.Menu(bar, tearoff=False)
-        for label, cmd in [("Undo\tCtrl+Z", self.undo), ("Redo\tCtrl+Y", self.redo), (None, None),
-                           ("Copy\tCtrl+C", self.copy_selected), ("Paste\tCtrl+V", self.paste),
-                           ("Delete\tDel", self.delete_selected), ("Select all\tCtrl+A", self.select_all), (None, None),
-                           ("Find element by name or number...\tCtrl+F", self.find_element)]:
+        for label, cmd in [("Undo\t(Ctrl+Z)", self.undo), ("Redo\t(Ctrl+Y)", self.redo), (None, None),
+                           ("Copy\t(Ctrl+C)", self.copy_selected), ("Paste\t(Ctrl+V)", self.paste),
+                           ("Delete\t(Del)", self.delete_selected), ("Select all\t(Ctrl+A)", self.select_all), (None, None),
+                           ("Find element by name or number...\t(Ctrl+F)", self.find_element)]:
             m.add_command(label=label, command=cmd) if label else m.add_separator()
         bar.add_cascade(label="Edit", menu=m)
         m = tk.Menu(bar, tearoff=False)
-        m.add_command(label="Zoom in\tCtrl++", command=lambda: self.zoom_at_centre(1.25))
-        m.add_command(label="Zoom out\tCtrl+-", command=lambda: self.zoom_at_centre(0.8))
-        m.add_command(label="Fit to window\tF", command=self.fit_view)
+        m.add_command(label="Zoom in\t(Ctrl++)", command=lambda: self.zoom_at_centre(1.25))
+        m.add_command(label="Zoom out\t(Ctrl+-)", command=lambda: self.zoom_at_centre(0.8))
+        m.add_command(label="Fit to window\t(F)", command=self.fit_view)
         m.add_separator()
         m.add_checkbutton(label="Show result boxes", variable=self.var_boxes, command=self.redraw)
         m.add_checkbutton(label="Colour coding", variable=self.var_colour, command=self.redraw)
@@ -209,8 +209,9 @@ class LoadFlowApp(tk.Tk):
         m.add_command(label="Reset panel layout", command=self.reset_layout)
         bar.add_cascade(label="View", menu=m)
         m = tk.Menu(bar, tearoff=False)
-        m.add_command(label="Check network\tCtrl+K", command=self.check_network)
-        m.add_command(label="Auto-layout", command=self.auto_layout)
+        m.add_command(label="Check network\t(Ctrl+K)", command=self.check_network)
+        m.add_command(label="Auto-layout (circle)", command=self.auto_layout)
+        m.add_command(label="Auto-layout (force-directed)", command=lambda: self.auto_layout("force"))
         m.add_command(label="System base MVA and frequency...", command=self.set_base)
         bar.add_cascade(label="Network", menu=m)
         self.study_menu = tk.Menu(bar, tearoff=False)
@@ -220,12 +221,12 @@ class LoadFlowApp(tk.Tk):
         self.study_menu.add_checkbutton(label="Q-limit enforcement", variable=self.var_qlim, command=self._commit_study_quiet)
         bar.add_cascade(label="Study", menu=self.study_menu)
         m = tk.Menu(bar, tearoff=False)
-        for label, cmd in [("Bus table", lambda: self.show_tab("Bus results")),
-                           ("Branch table", lambda: self.show_tab("Branch results")),
-                           ("Generator table", lambda: self.show_tab("Generators")),
+        for label, cmd in [("Bus table", lambda: self.show_results("Bus results")),
+                           ("Branch table", lambda: self.show_results("Branch results")),
+                           ("Generator table", lambda: self.show_results("Generators")),
                            ("Loss summary", self.show_loss_summary),
-                           ("Violations list", lambda: self.show_tab("Violations")),
-                           ("Convergence plot", lambda: self.nb.select(self.plot_tab))]:
+                           ("Violations list", lambda: self.show_results("Violations")),
+                           ("Convergence plot", lambda: self.show_results("plot"))]:
             m.add_command(label=label, command=cmd)
         bar.add_cascade(label="Results", menu=m)
         m = tk.Menu(bar, tearoff=False)
@@ -241,7 +242,7 @@ class LoadFlowApp(tk.Tk):
                            ("Undo", self.undo), ("Redo", self.redo), ("|", None),
                            ("Select", lambda: self.set_tool("Select")), ("Pan", lambda: self.set_tool("Pan")),
                            ("Zoom-fit", self.fit_view), ("|", None), ("Check network", self.check_network),
-                           ("Run NR (F5)", self.run_nr), ("Show results", lambda: self.show_tab("Bus results"))]:
+                           ("Run NR (F5)", self.run_nr), ("Show results", self.show_results)]:
             if cmd is None:
                 ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=4)
                 continue
@@ -571,7 +572,7 @@ class LoadFlowApp(tk.Tk):
         if item and self.tool == "Select":
             self.sel = {item}
             self.selection_changed()
-            self.open_dialog(*item)
+            self.focus_properties()
 
     def on_context(self, e):
         item = self.hit(e.x, e.y)
@@ -581,7 +582,7 @@ class LoadFlowApp(tk.Tk):
             self.sel = {item}
             self.selection_changed()
         menu = tk.Menu(self, tearoff=False)
-        menu.add_command(label="Properties...", command=lambda: self.open_dialog(*item))
+        menu.add_command(label="Properties", command=self.focus_properties)
         menu.add_command(label="Delete", command=self.delete_selected)
         el = self._element(*item)
         menu.add_command(label="Put in service" if not el.in_service else "Take out of service",
@@ -750,17 +751,16 @@ class LoadFlowApp(tk.Tk):
         self.status.set("Properties applied; results (if any) are now stale.")
         self.model_changed(keep_form=True)
 
-    def open_dialog(self, kind, key):
-        top = tk.Toplevel(self)
-        top.title("Properties")
-        top.transient(self)
-        form = PropertyForm(top, self.model, kind, key, on_applied=lambda: self.model_changed())
-        form.pack(fill="both", expand=True, padx=10, pady=8)
-        bar = ttk.Frame(top)
-        bar.pack(fill="x", padx=10, pady=(0, 8))
-        ttk.Button(bar, text="Apply", command=form.apply).pack(side="left")
-        ttk.Button(bar, text="OK", command=lambda: top.destroy() if form.apply() else None).pack(side="left", padx=4)
-        ttk.Button(bar, text="Cancel", command=top.destroy).pack(side="left")
+    def focus_properties(self):
+        """Double-click / right-click > Properties: edit in the docked Properties panel (no pop-up window)."""
+        form = self.prop_form
+        if form is None:
+            return
+        for key, w in form.widgets.items():
+            if isinstance(w, tk.Entry) and str(w.cget("state")) == "normal":
+                w.focus_set()
+                w.selection_range(0, "end")
+                break
 
     # ------------------------------------------------------------------ edit commands
     def model_changed(self, fit=False, keep_form=False):
@@ -833,10 +833,11 @@ class LoadFlowApp(tk.Tk):
             self.sel = set(hits)
             self.redraw()
 
-    def auto_layout(self):
-        self.model.auto_layout()
+    def auto_layout(self, mode="circle"):
+        self.model.auto_layout(mode)
         self.model_changed(fit=True)
-        self.status.set("Force-directed layout applied (drag buses to rearrange; Save keeps the layout).")
+        self.status.set(("Circular" if mode != "force" else "Force-directed") +
+                        " layout applied (drag buses to rearrange; Save keeps the layout).")
 
     def set_base(self):
         base = simpledialog.askfloat("System base", "Base power (MVA):", initialvalue=self.model.net.base_mva,
@@ -997,8 +998,24 @@ class LoadFlowApp(tk.Tk):
                         f"max mismatch {r['max_mismatch_pu']:.2e} pu  |  solve time {r['solve_time_s'] * 1e3:.2f} ms  |  {base}"
                         f"{'  |  STALE - edited since last run' if m.stale else ''}")
 
-    def show_tab(self, name):
-        self.nb.select(self.tables[name])
+    def show_results(self, tab="Bus results"):
+        """Toolbar 'Show results' / Results menu: reveal the results dock, pick a tab, show the result boxes."""
+        if self.model.results is None:
+            messagebox.showinfo("Show results", "There are no results yet.\nRun the load flow first (Run NR, F5).")
+            return
+        self.update_idletasks()
+        try:                                              # make sure the results pane is not collapsed
+            height, pos = self.vpane.winfo_height(), self.vpane.sashpos(0)
+            if height - pos < 230:
+                self.vpane.sashpos(0, max(height - 320, 200))
+        except tk.TclError:
+            pass
+        self.nb.select(self.plot_tab if tab == "plot" else self.tables[tab])
+        if not self.var_boxes.get():
+            self.var_boxes.set(True)
+            self.model.study.show_boxes = True
+        self.redraw()
+        self.status.set("Showing results" + (" (stale: network edited since the last run)." if self.model.stale else "."))
 
     def show_loss_summary(self):
         if self.model.results is None:
@@ -1080,7 +1097,7 @@ class LoadFlowApp(tk.Tk):
             return
         try:
             self._load_model(ProjectModel.import_case(path))
-            self.status.set(f"Imported {Path(path).name} with automatic layout; drag buses to rearrange, then save.")
+            self.status.set(f"Imported {Path(path).name} on a circular layout; drag buses to rearrange (Network > Auto-layout), then save.")
         except Exception as exc:
             messagebox.showerror("Import failed", f"{type(exc).__name__}: {exc}")
 
@@ -1176,7 +1193,7 @@ class LoadFlowApp(tk.Tk):
     def about(self):
         messagebox.showinfo("About", f"{about_info.COURSE}\nNewton-Raphson Load Flow Simulator\n"
                                      f"Version {about_info.VERSION}\n\nStudent: {about_info.STUDENT_NAME}\n"
-                                     f"Roll number: {about_info.ROLL_NUMBER}")
+                                     f"SR number: {about_info.ROLL_NUMBER}")
 
     def on_close(self):
         if self._confirm_discard():
