@@ -39,7 +39,7 @@ def benchmark_case(case_number):
             net,
             tolerance=TOLERANCE,
             max_iterations=MAX_ITERATIONS,
-            enforce_q_limits=False,
+            enforce_q_limits=True,
             flat_start=True,
         )
         elapsed = perf_counter() - start
@@ -84,7 +84,7 @@ def main():
     print("Newton-Raphson Power Flow Benchmark")
     print(f"Tolerance: {TOLERANCE}")
     print(f"Maximum iterations: {MAX_ITERATIONS}")
-    print("Start: flat; reactive power limits: disabled")
+    print("Start: flat; reactive power limits: enabled")
     print(f"Timed runs per case: {REPEATS}")
     print("-" * 112)
 
