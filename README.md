@@ -1,4 +1,4 @@
-# E4 234 — Newton–Raphson Load Flow Simulator (Part A engine + Part B Tkinter GUI)
+# Newton–Raphson Load Flow Simulator (Part A engine + Part B Tkinter GUI)
 
 Python 3.10+.  The solver uses NumPy and SciPy only — no ready-made power-flow routine in the solve path.
 

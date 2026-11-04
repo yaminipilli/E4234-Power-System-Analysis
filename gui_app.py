@@ -19,7 +19,7 @@ from gui_widgets import ConvergencePlot, PropertyForm, SortableTable
 from layout import GRID
 from matpower_export import save_matpower_case
 
-APP_TITLE = "E4 234 Load Flow Simulator"
+APP_TITLE = "Load Flow Simulator"
 DEFAULT_CASE = Path(__file__).parent / "data" / "case14.m"
 RECENT_FILE = Path.home() / ".e4234_loadflow_recent.json"
 RUN_LABEL = "Run NR\tF5"

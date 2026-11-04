@@ -245,7 +245,7 @@ def export_html(path, net, res, positions, stale=False, show_kv=False):
     doc = f"""<!doctype html><html><head><meta charset="utf-8"><title>Load flow report</title>
 <style>body{{font-family:Segoe UI,Arial,sans-serif;margin:24px;color:#1f2937}}table{{border-collapse:collapse;margin:8px 0 22px;font-size:12px}}
 th,td{{border:1px solid #d1d5db;padding:3px 8px;text-align:right}}th{{background:#f3f4f6}}.s th,.s td{{text-align:left}}h1{{font-size:22px}}h2{{font-size:16px;margin-top:26px}}</style></head><body>
-<h1>E4 234 Load Flow Report</h1><p>Generated {datetime.datetime.now():%Y-%m-%d %H:%M}.{' <b>Results are stale.</b>' if stale else ''}</p>
+<h1>Load Flow Report</h1><p>Generated {datetime.datetime.now():%Y-%m-%d %H:%M}.{' <b>Results are stale.</b>' if stale else ''}</p>
 <h2>Summary</h2><table class="s">{summ}</table><h2>Single-line diagram</h2>{svg}
 <h2>Violations</h2>{_html_table(viol) if viol[1] else '<p>None.</p>'}
 <h2>Bus results</h2>{_html_table(bus_table(net, res))}<h2>Branch results</h2>{_html_table(branch_table(net, res))}
@@ -276,7 +276,7 @@ def export_pdf(path, net, res, positions, stale=False, show_kv=False):
                                ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
         return t
 
-    flow = [Paragraph("E4 234 Load Flow Report", st["Title"]),
+    flow = [Paragraph("Load Flow Report", st["Title"]),
             Paragraph(f"Generated {datetime.datetime.now():%Y-%m-%d %H:%M}" + (" - RESULTS ARE STALE" if stale else ""), st["Normal"]),
             Spacer(1, 6), Paragraph("Summary", st["Heading2"]), mk((["Item", "Value"], [list(r) for r in summary_rows(net, res)], []), 8)]
     with tempfile.TemporaryDirectory() as d:
