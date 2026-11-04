@@ -22,7 +22,7 @@ from matpower_export import save_matpower_case
 APP_TITLE = "Load Flow Simulator"
 DEFAULT_CASE = Path(__file__).parent / "data" / "case14.m"
 RECENT_FILE = Path.home() / ".e4234_loadflow_recent.json"
-RUN_LABEL = "Run NR\tF5"
+RUN_LABEL = "Run NR(F5)"
 PALETTE = ["Select", "Pan", "Bus", "Line", "Transformer", "Generator", "Load", "Shunt", "External grid"]
 
 USER_GUIDE = (
@@ -283,7 +283,7 @@ class LoadFlowApp(tk.Tk):
             m.add_command(label=label, command=cmd)
         bar.add_cascade(label="Results", menu=m)
         m = tk.Menu(bar, tearoff=False)
-        m.add_command(label="User guide\tF1", command=self.user_guide)
+        m.add_command(label="User guide(F1)", command=self.user_guide)
         m.add_command(label="About", command=self.about)
         bar.add_cascade(label="Help", menu=m)
 

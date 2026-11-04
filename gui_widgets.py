@@ -241,7 +241,7 @@ class PropertyForm(ttk.Frame):
     def show_errors(self, errs):
         for k, w in self.widgets.items():
             if isinstance(w, tk.Entry):
-                w.configure(bg=ERR_BG if k in errs else "white")
+                w.configure(background=ERR_BG if k in errs else "white")
         labels = {f.key: f.label for f in gui_fields.SPECS[self.sk]}
         self.msg.configure(text="\n".join(f"{labels.get(k, k)}: {m}" for k, m in errs.items()))
 
