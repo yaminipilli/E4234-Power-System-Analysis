@@ -124,7 +124,6 @@ class LoadFlowApp(tk.Tk):
         style.configure("Results.TButton", padding=(6, 4), background=panel, bordercolor="#d5dde7")
         style.map("TButton", background=[("active", "#e8eef8"), ("pressed", "#dbeafe")], foreground=[("disabled", muted)])
         style.configure("TEntry", padding=5, fieldbackground=panel, bordercolor="#cbd5e1")
-        style.configure("Filter.TEntry", padding=(4, 2), fieldbackground=panel, bordercolor="#cbd5e1")
         style.configure("TCombobox", padding=4, fieldbackground=panel)
         style.configure("TNotebook", background=bg, borderwidth=0, tabmargins=(1, 2, 1, 0))
         style.configure("TNotebook.Tab", padding=(4, 2), background="#e8edf4")
@@ -887,7 +886,80 @@ class LoadFlowApp(tk.Tk):
             self.model_changed()
 
     def find_element(self):
-        text = simpledialog.askstring("Find element", "Name or number:", parent=self)
+        """Find buses, lines, transformers and generators using an autocomplete list."""
+        options = []
+        for bus in self.model.net.buses:
+            options.append((f"Bus {bus.number} - {bus.name}", str(bus.number)))
+        for br in self.model.net.branches:
+            kind = "Transformer" if br.kind.lower() == "transformer" else "Line"
+            label = f"{kind} {br.from_bus}-{br.to_bus}"
+            if br.name and br.name.lower() not in label.lower():
+                label += f" - {br.name}"
+            options.append((label, label))
+        for gen in self.model.net.generators:
+            options.append((f"Generator - {gen.name}", gen.name))
+
+        options.sort(key=lambda item: item[0].lower())
+        labels = [item[0] for item in options]
+        lookup = {label: value for label, value in options}
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Find element")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=12)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Search by bus, line, transformer or generator:").pack(anchor="w", pady=(0, 6))
+        choice = tk.StringVar()
+        combo = ttk.Combobox(frame, textvariable=choice, values=labels, width=42)
+        combo.pack(fill="x")
+        ttk.Label(frame, text="Examples: Bus 12, 12, Line 1-2, Transformer 5-6").pack(
+            anchor="w", pady=(5, 10)
+        )
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x")
+        result = {"value": None}
+
+        def update_choices(_event=None):
+            typed = choice.get().strip().lower()
+            if not typed:
+                filtered = labels
+            else:
+                filtered = [label for label in labels if typed in label.lower()]
+            combo.configure(values=filtered)
+            # Keep the text the user is entering while refreshing suggestions.
+            combo.set(choice.get())
+            if filtered and typed:
+                combo.event_generate("<Down>")
+
+        def accept(_event=None):
+            value = choice.get().strip()
+            if value in lookup:
+                value = lookup[value]
+            if not value:
+                return
+            result["value"] = value
+            dialog.destroy()
+
+        def cancel():
+            dialog.destroy()
+
+        combo.bind("<KeyRelease>", update_choices)
+        combo.bind("<<ComboboxSelected>>", lambda _e: accept())
+        combo.bind("<Return>", accept)
+        ttk.Button(buttons, text="OK", command=accept).pack(side="left", padx=(0, 6))
+        ttk.Button(buttons, text="Cancel", command=cancel).pack(side="left")
+        dialog.bind("<Escape>", lambda _e: cancel())
+        dialog.protocol("WM_DELETE_WINDOW", cancel)
+        combo.focus_set()
+        dialog.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - dialog.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.wait_window(dialog)
+
+        text = result["value"]
         if not text:
             return
         hits = self.model.find(text)
@@ -897,8 +969,10 @@ class LoadFlowApp(tk.Tk):
         self.sel = set(hits)
         self.selection_changed()
         self.status.set(f"{len(hits)} element(s) found.")
-        if hits[0][0] == "bus":
-            self.select_from_table(*hits[0])
+        # Center a bus result in the canvas without losing multi-match selection.
+        first_bus = next((hit for hit in hits if hit[0] == "bus"), None)
+        if first_bus:
+            self.select_from_table(*first_bus)
             self.sel = set(hits)
             self.redraw()
 

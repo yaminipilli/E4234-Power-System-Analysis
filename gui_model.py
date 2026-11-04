@@ -259,16 +259,26 @@ class ProjectModel:
         hits = []
         if not t:
             return hits
+
+        # Accept labels such as "Bus 12" as well as a plain bus number/name.
+        bus_query = t[4:].strip() if t.startswith("bus ") else t
         for b in self.net.buses:
-            if t == str(b.number) or t in b.name.lower():
+            if bus_query == str(b.number) or bus_query in b.name.lower():
                 hits.append(("bus", b.number))
+
         for i, br in enumerate(self.net.branches):
             kind = "transformer" if br.kind.lower() == "transformer" else "line"
             endpoints = f"{br.from_bus}-{br.to_bus}"
             reverse_endpoints = f"{br.to_bus}-{br.from_bus}"
-            searchable = f"{br.name} {kind} {br.from_bus} {br.to_bus} {endpoints} {reverse_endpoints}".lower()
+            generated_label = f"{kind} {endpoints}"
+            reverse_label = f"{kind} {reverse_endpoints}"
+            searchable = (
+                f"{br.name} {kind} {br.from_bus} {br.to_bus} "
+                f"{endpoints} {reverse_endpoints} {generated_label} {reverse_label}"
+            ).lower()
             if t in searchable:
                 hits.append(("branch", i))
+
         for i, g in enumerate(self.net.generators):
             if t in g.name.lower():
                 hits.append(("gen", i))
