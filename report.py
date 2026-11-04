@@ -25,7 +25,8 @@ def bus_table(net, res):
     for b in res["bus_results"]:
         rows.append([b["bus"], b["name"], b["type"], _f(b["vm_pu"], 5), _f(b["vm_kv"], 3), _f(b["va_deg"], 4),
                      _f(b["p_injection_mw"]), _f(b["q_injection_mvar"]), _f(b["p_gen_mw"]), _f(b["q_gen_mvar"]),
-                     _f(b["p_load_mw"]), _f(b["q_load_mvar"]), b["limit"]])
+                     _f(b["p_load_mw"]), _f(b["q_load_mvar"]), b["limit"] or "OK"
+                     ])
         keys.append(("bus", b["bus"]))
     return h, rows, keys
 
@@ -47,8 +48,8 @@ def branch_table(net, res):
 
 def gen_table(net, res):
     h = ["Bus", "Generator", "P (MW)", "Q (MVAr)", "In service", "Limit"]
-    rows = [[g["bus"], g["name"], _f(g["p_gen_mw"]), _f(g["q_gen_mvar"]), g["in_service"], g.get("limit", "")]
-            for g in res["generator_results"]]
+    rows = [[g["bus"], g["name"], _f(g["p_gen_mw"]), _f(g["q_gen_mvar"]), g["in_service"],
+             g.get("limit") or "OK"] for g in res["generator_results"]]
     return h, rows, [("bus", g["bus"]) for g in res["generator_results"]]
 
 
@@ -73,6 +74,8 @@ def violation_table(net, res):
         if row["q_limit_hit"]:
             rows.append([f"Generator bus {row['bus']}", f"at {row['limit']}", f"{row['q_gen_mvar']:.2f} MVAr", ""])
             keys.append(("bus", row["bus"]))
+    if not rows:
+        rows.append(["System", "No violations", "OK", "—"])
     return h, rows, keys
 
 

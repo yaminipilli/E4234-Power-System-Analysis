@@ -263,7 +263,11 @@ class ProjectModel:
             if t == str(b.number) or t in b.name.lower():
                 hits.append(("bus", b.number))
         for i, br in enumerate(self.net.branches):
-            if t in br.name.lower():
+            kind = "transformer" if br.kind.lower() == "transformer" else "line"
+            endpoints = f"{br.from_bus}-{br.to_bus}"
+            reverse_endpoints = f"{br.to_bus}-{br.from_bus}"
+            searchable = f"{br.name} {kind} {br.from_bus} {br.to_bus} {endpoints} {reverse_endpoints}".lower()
+            if t in searchable:
                 hits.append(("branch", i))
         for i, g in enumerate(self.net.generators):
             if t in g.name.lower():

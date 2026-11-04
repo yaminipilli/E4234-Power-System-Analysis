@@ -29,7 +29,7 @@ class SortableTable(ttk.Frame):
         ttk.Label(top, text="Filter:").pack(side="left", padx=(2, 4))
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add("write", lambda *_: self._render())
-        ttk.Entry(top, textvariable=self.filter_var, width=28).pack(side="left")
+        ttk.Entry(top, textvariable=self.filter_var, width=28, style="Filter.TEntry").pack(side="left")
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True)
         self.tree = ttk.Treeview(body, show="headings", height=6)
@@ -45,6 +45,36 @@ class SortableTable(ttk.Frame):
         self.tree.tag_configure("red", foreground="#dc2626")
         self.tree.tag_configure("amber", foreground="#b45309")
         self.tree.bind("<<TreeviewSelect>>", self._selected)
+        self.tree.bind("<Configure>", self._fit_columns)
+
+    def _fit_columns(self, event=None):
+        """Use the full table width while retaining readable column proportions."""
+        if not self.headers:
+            return
+
+        available = event.width if event is not None else self.tree.winfo_width()
+        if available <= 1:
+            return
+
+        # Base widths account for both the heading and the longest displayed value.
+        base_widths = []
+        for index, header in enumerate(self.headers):
+            content_width = max(
+                (len(str(row[index])) for row in self.rows if index < len(row)),
+                default=0
+            )
+            width = max(80, 9 * len(str(header)), min(260, 8 * content_width + 24))
+            base_widths.append(width)
+
+        total_base = sum(base_widths)
+        if total_base < available:
+            extra_each = (available - total_base) // len(base_widths)
+            widths = [width + extra_each for width in base_widths]
+        else:
+            widths = base_widths
+
+        for header, width in zip(self.headers, widths):
+            self.tree.column(header, width=width, minwidth=60, anchor="center", stretch=True)
 
     def set_data(self, headers, rows, keys, tags=None):
         self.headers, self.rows, self.keys = list(headers), list(rows), list(keys)
@@ -52,8 +82,9 @@ class SortableTable(ttk.Frame):
         self.tree.configure(columns=self.headers)
         for i, h in enumerate(self.headers):
             self.tree.heading(h, text=h, command=lambda c=i: self._sort_by(c))
-            self.tree.column(h, width=max(70, 9 * len(str(h))), minwidth=50, anchor="center", stretch=True)
+            self.tree.column(h, width=max(80, 9 * len(str(h))), minwidth=60, anchor="center", stretch=True)
         self._render()
+        self.after_idle(self._fit_columns)
 
     def clear(self):
         self.set_data([], [], [])
@@ -210,15 +241,9 @@ class PropertyForm(ttk.Frame):
     def show_errors(self, errs):
         for k, w in self.widgets.items():
             if isinstance(w, tk.Entry):
-                try:
-                    w.configure(bg=ERR_BG if k in errs else "white")
-                except tk.TclError:
-                    pass
-
+                w.configure(bg=ERR_BG if k in errs else "white")
         labels = {f.key: f.label for f in gui_fields.SPECS[self.sk]}
-        self.msg.configure(text="\n".join(
-            f"{labels.get(k, k)}: {m}" for k, m in errs.items()
-        ))
+        self.msg.configure(text="\n".join(f"{labels.get(k, k)}: {m}" for k, m in errs.items()))
 
     def apply(self):
         errs = self.model.apply_fields(self.kind, self.key, self.values())

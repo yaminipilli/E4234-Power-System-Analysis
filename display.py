@@ -52,8 +52,8 @@ def bus_box_text(bus_row, show_kv=False):
 
 def branch_box_text(br_row):
     """Sending-end P, Q with an arrow showing flow direction, and loading %."""
-    arrow = "\u2192" if br_row["p_from_mw"] >= 0 else "\u2190"
-    s = f"{arrow} {abs(br_row['p_from_mw']):.1f} MW  {br_row['q_from_mvar']:.1f} MVAr"
+    arrow = "→" if br_row["p_from_mw"] >= 0 else "←"
+    s = f"P = {br_row['p_from_mw']:.1f} MW {arrow}\nQ = {br_row['q_from_mvar']:.1f} MVAr"
     if br_row.get("loading_percent") is not None:
-        s += f"\n{br_row['loading_percent']:.0f} %"
+        s += f"\nLoading = {br_row['loading_percent']:.1f} %"
     return s

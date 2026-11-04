@@ -68,6 +68,7 @@ class LoadFlowApp(tk.Tk):
         self.var_qlim = tk.BooleanVar(value=False)
         self.var_scale = tk.StringVar(value="1.0")
         self.status = tk.StringVar(value="Ready")
+        self.metrics_status = tk.StringVar(value="NOT RUN  •  Base: 100 MVA  •  50 Hz")
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self._sync_study_to_widgets()
@@ -76,9 +77,18 @@ class LoadFlowApp(tk.Tk):
     # ------------------------------------------------------------------ construction
     def _build_ui(self):
         self._build_menus()
+        self._style_ui()
+        # Pack the status bar first (bottom) so the expanding work area cannot
+        # push it below the visible window.
+        statusbar = ttk.Frame(self, style="Statusbar.TFrame", padding=(10, 5))
+        statusbar.pack(side="bottom", fill="x")
+        ttk.Label(statusbar, textvariable=self.status, style="Statusbar.TLabel",
+                  anchor="w").pack(side="left", fill="x", expand=True)
+        ttk.Label(statusbar, textvariable=self.metrics_status, style="Metrics.TLabel",
+                  anchor="e").pack(side="right")
         self._build_toolbar()
         self.vpane = ttk.Panedwindow(self, orient="vertical")
-        self.vpane.pack(fill="both", expand=True)
+        self.vpane.pack(side="top", fill="both", expand=True)
         self.hpane = ttk.Panedwindow(self.vpane, orient="horizontal")
         self.vpane.add(self.hpane, weight=5)
         left = ttk.Frame(self.hpane, width=170, padding=5)
@@ -94,8 +104,37 @@ class LoadFlowApp(tk.Tk):
         self._bind_canvas()
         self._build_properties(right)
         self._build_results()
-        ttk.Label(self, textvariable=self.status, relief="sunken", anchor="w", padding=3).pack(side="bottom", fill="x")
         self._bind_keys()
+
+    def _style_ui(self):
+        """Modernize themed controls while preserving the existing diagram palette."""
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        bg, panel, ink, muted, accent = "#f4f6fa", "#ffffff", "#1e293b", "#64748b", "#2563eb"
+        self.configure(background=bg)
+        style.configure(".", font=("Segoe UI", 9), foreground=ink)
+        style.configure("TFrame", background=bg)
+        style.configure("TLabel", background=bg, foreground=ink)
+        # Keep all buttons compact and consistent; the Results toolbar button is
+        # intentionally a little larger for emphasis.
+        style.configure("TButton", padding=(4, 2), background=panel, bordercolor="#d5dde7")
+        style.configure("Results.TButton", padding=(6, 4), background=panel, bordercolor="#d5dde7")
+        style.map("TButton", background=[("active", "#e8eef8"), ("pressed", "#dbeafe")], foreground=[("disabled", muted)])
+        style.configure("TEntry", padding=5, fieldbackground=panel, bordercolor="#cbd5e1")
+        style.configure("Filter.TEntry", padding=(4, 2), fieldbackground=panel, bordercolor="#cbd5e1")
+        style.configure("TCombobox", padding=4, fieldbackground=panel)
+        style.configure("TNotebook", background=bg, borderwidth=0, tabmargins=(1, 2, 1, 0))
+        style.configure("TNotebook.Tab", padding=(4, 2), background="#e8edf4")
+        style.map("TNotebook.Tab", background=[("selected", panel), ("active", "#f8fafc")], foreground=[("selected", accent)])
+        style.configure("Treeview", rowheight=25, background=panel, fieldbackground=panel, foreground=ink, bordercolor="#e2e8f0")
+        style.configure("Treeview.Heading", padding=(4, 2), font=("Segoe UI", 9, "bold"), background="#e9eef5", foreground=ink)
+        style.map("Treeview", background=[("selected", "#dbeafe")], foreground=[("selected", "#1e3a8a")])
+        style.configure("Statusbar.TFrame", background="#e9eef5")
+        style.configure("Statusbar.TLabel", background="#e9eef5", foreground=muted, padding=(2, 0))
+        style.configure("Metrics.TLabel", background="#e9eef5", foreground=ink, font=("Segoe UI", 9, "bold"), padding=(8, 0))
 
     def _build_palette(self, parent):
         ttk.Label(parent, text="ELEMENT PALETTE", font=("Segoe UI", 9, "bold")).pack(anchor="w")
@@ -142,14 +181,29 @@ class LoadFlowApp(tk.Tk):
         self.prop_canvas.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
         self.prop_inner = ttk.Frame(self.prop_canvas)
-        self.prop_canvas.create_window((0, 0), window=self.prop_inner, anchor="nw")
-        self.prop_inner.bind("<Configure>", lambda _e: self.prop_canvas.configure(scrollregion=self.prop_canvas.bbox("all")))
+        self.prop_window = self.prop_canvas.create_window(
+            (0, 0), window=self.prop_inner, anchor="nw", width=270
+        )
+        # Keep the embedded properties form as wide as the available panel.
+        # Without this, the canvas window retains its requested width and leaves
+        # an unused strip on the right after the panel is resized/styled.
+        self.prop_canvas.bind("<Configure>", self._resize_property_window)
+        self.prop_inner.bind(
+            "<Configure>",
+            lambda _e: self.prop_canvas.configure(
+                scrollregion=self.prop_canvas.bbox("all")
+            )
+        )
         self.prop_form = None
         btns = ttk.Frame(parent)
         btns.pack(fill="x", pady=4)
         self.btn_apply = ttk.Button(btns, text="Apply", command=self.apply_properties)
         self.btn_apply.pack(side="left", fill="x", expand=True, padx=(0, 2))
         ttk.Button(btns, text="Delete", command=self.delete_selected).pack(side="left", fill="x", expand=True)
+
+    def _resize_property_window(self, event):
+        """Stretch the embedded property form to the full canvas width."""
+        self.prop_canvas.itemconfigure(self.prop_window, width=event.width)
 
     def _build_results(self):
         outer = ttk.Frame(self.vpane)
@@ -246,7 +300,8 @@ class LoadFlowApp(tk.Tk):
             if cmd is None:
                 ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=4)
                 continue
-            b = ttk.Button(tb, text=label, command=cmd)
+            button_style = "Results.TButton" if label == "Show results" else "TButton"
+            b = ttk.Button(tb, text=label, command=cmd, style=button_style)
             b.pack(side="left", padx=1)
             self.toolbar_buttons[label] = b
 
@@ -398,6 +453,20 @@ class LoadFlowApp(tk.Tk):
             c.create_line(sx1, sy1, sx2, sy2, fill=col, width=(4 if sel else 2), dash=(6, 4) if not br.in_service else (),
                           tags=(f"branch:{i}",))
             mx, my = (sx1 + sx2) / 2, (sy1 + sy2) / 2
+            # Show the active-power direction arrow directly on the branch conductor.
+            if row and row.get("active") and br.in_service:
+                dx, dy = sx2 - sx1, sy2 - sy1
+                length = math.hypot(dx, dy)
+                if length > 24:
+                    ux, uy = dx / length, dy / length
+                    direction = 1 if row.get("p_from_mw", 0.0) >= 0 else -1
+                    offset = min(12, length * 0.12)
+                    half = min(13, length * 0.12)
+                    cx, cy = mx + ux * direction * offset, my + uy * direction * offset
+                    start_sign, end_sign = (-1, 1) if direction > 0 else (1, -1)
+                    c.create_line(cx + ux * half * start_sign, cy + uy * half * start_sign,
+                                  cx + ux * half * end_sign, cy + uy * half * end_sign,
+                                  fill=col, width=2, arrow=tk.LAST, arrowshape=(8, 10, 4), tags=(f"branch:{i}",))
             if br.kind == "transformer":
                 r = 9 * max(self.scale, 0.6)
                 c.create_oval(mx - 1.5 * r, my - r, mx + 0.5 * r, my + r, outline=col, width=2, tags=(f"branch:{i}",))
@@ -955,6 +1024,8 @@ class LoadFlowApp(tk.Tk):
             return
         self.plot.plot(res, self.model.study.tolerance)
         self.model_changed(keep_form=True)
+        # Replace the temporary progress message once the solver has returned.
+        self.status.set("Load flow converged." if res["converged"] else "Load flow diverged.")
         if res["converged"]:
             self.nb.select(self.tables["Bus results"])
         else:
@@ -992,11 +1063,13 @@ class LoadFlowApp(tk.Tk):
         base = f"base {net.base_mva:g} MVA, {net.frequency_hz:g} Hz"
         r = m.results
         if r is None:
-            self.status.set(f"Status: not run  |  {base}")
+            self.metrics_status.set(f"NOT RUN  •  {base}")
             return
-        self.status.set(f"Status: {'converged' if r['converged'] else 'DIVERGED'}  |  iterations {r['iterations']}  |  "
-                        f"max mismatch {r['max_mismatch_pu']:.2e} pu  |  solve time {r['solve_time_s'] * 1e3:.2f} ms  |  {base}"
-                        f"{'  |  STALE - edited since last run' if m.stale else ''}")
+        state = "CONVERGED" if r["converged"] else "DIVERGED"
+        stale = "  •  STALE" if m.stale else ""
+        self.metrics_status.set(
+            f"{state}  •  Iterations: {r['iterations']}  •  Max mismatch: {r['max_mismatch_pu']:.2e} pu"
+            f"  •  Solve: {r['solve_time_s'] * 1e3:.2f} ms  •  {base}{stale}")
 
     def show_results(self, tab="Bus results"):
         """Toolbar 'Show results' / Results menu: reveal the results dock, pick a tab, show the result boxes."""
